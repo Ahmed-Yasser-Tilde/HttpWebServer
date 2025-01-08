@@ -1,4 +1,6 @@
 ﻿using HttpWebServer.CL.Common;
+using HttpWebServer.CL.Models.Request;
+using HttpWebServer.CL.Models.Response;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -11,8 +13,10 @@ namespace HttpWebServer.CL.Models.Server
         #region Properites
         private static readonly Lazy<HttpServer> _instance = new Lazy<HttpServer>(() => new HttpServer());
         public static HttpServer Instance => _instance.Value;
+        private RequestHelper _requestHelper;
+        private ResponseHelper _responseHelper;
         private TcpListener _tcpListener;
-        private string projectOutputDirectory;
+        private string _projectOutputDirectory;
         #endregion
 
         #region Constructor
@@ -25,7 +29,9 @@ namespace HttpWebServer.CL.Models.Server
             IPEndPoint endPoint = CreateIPEndPoint(ipAddress, port);
             _tcpListener = new TcpListener(endPoint);
             string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            projectOutputDirectory = Path.GetFullPath(Path.Combine(assemblyDirectory, @"..\..\..\..\HttpWebServer.CL\static"));
+            _projectOutputDirectory = Path.GetFullPath(Path.Combine(assemblyDirectory, @"..\..\..\..\HttpWebServer.CL\static"));
+            _requestHelper = new RequestHelper();
+            _responseHelper = new ResponseHelper();
         }
 
         private IPEndPoint CreateIPEndPoint(string ipAddress, string port)
@@ -93,7 +99,7 @@ namespace HttpWebServer.CL.Models.Server
         }
         #endregion
 
-
+        #region Client Handling
         public async Task<TcpClient> AcceptTcpClientAsync()
         {
             TcpClient client = await _tcpListener.AcceptTcpClientAsync();
@@ -109,14 +115,17 @@ namespace HttpWebServer.CL.Models.Server
                 {
                     byte[] buffer = new byte[1024];
                     int bytesRead = await stream.ReadAsync(buffer);
-                    string request = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    Console.WriteLine("Request:\n" + request);
+                    string httpRequest = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                    Console.WriteLine("Request:\n" + httpRequest);
 
-                    string requestedResource = GetRequestedResource(request);
-                    string contentType = GetContentType(requestedResource);
+                    string requestedResource = _requestHelper.GetRequestedResource(httpRequest);
+                    string contentType = _requestHelper.GetContentType(requestedResource);
 
-                    string response = await ProcessRequestAsync(request, requestedResource);
-                    byte[] responseData = Encoding.UTF8.GetBytes(response);
+                    (string , HttpStatusCode) response = await _requestHelper.ProcessRequestAsync(httpRequest, requestedResource , _projectOutputDirectory);
+                    string responseBody = response.Item1;
+                    HttpStatusCode responseStatus = response.Item2;
+
+                    byte[] responseData = _responseHelper.ProcessResponseAsync(contentType, responseBody , responseStatus);
                     await stream.WriteAsync(responseData);
                 }
             }
@@ -133,74 +142,6 @@ namespace HttpWebServer.CL.Models.Server
                 client.Close();
             }
         }
-
-        public async Task<string> ProcessRequestAsync(string request, string requestedResource)
-        {
-            string[] requestLines = request.Split('\n');
-            string[] requestLineParts = requestLines[0].Split(' ');
-            string method = requestLineParts[0];
-            string path = requestLineParts[1];
-            if (path.StartsWith("/static/"))
-            {
-                string filePath = Path.Combine(projectOutputDirectory, requestedResource);
-                if (!File.Exists(filePath))
-                {
-                    return await HandleNotFoundPage(filePath);
-                }
-                else
-                {
-                    string fileContent = await File.ReadAllTextAsync(filePath);
-                    return $"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n{fileContent}";
-                }
-            }
-            return "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Welcome to the Home Page!</h1>";
-        }
-
-        #region Process Request Helpers
-        private string GetRequestedResource(string request)
-        {
-            string[] requestLines = request.Split('\n');
-            string[] requestLineParts = requestLines[0].Split(' ');
-            string method = requestLineParts[0];
-            string path = requestLineParts[1];
-            StringBuilder stringBuilder = new StringBuilder();
-            for (int i = path.Length - 1; i >= 0; i--)
-            {
-                if (path[i] == '/')
-                {
-                    for (int j = i + 1; j < path.Length; j++)
-                    {
-                        stringBuilder.Append(path[j]);
-                    }
-                    break;
-                }
-            }
-            return stringBuilder.ToString();
-        }
-
-        private string GetContentType(string resource)
-        {
-            string extension = Path.GetExtension(resource).ToLower();
-            return extension switch
-            {
-                ".html" => "text/html",
-                ".js" => "application/javascript",
-                ".css" => "text/css",
-                ".json" => "application/json",
-                ".png" => "image/png",
-                ".jpg" or ".jpeg" => "image/jpeg",
-                ".xml" => "application/xml",
-                _ => "text/plain",
-            };
-        }
         #endregion
-
-        private async Task<string> HandleNotFoundPage(string filePath)
-        {
-            filePath = Path.Combine(projectOutputDirectory, CommonString.NotFoundPage);
-            string fileContent = await File.ReadAllTextAsync(filePath);
-            return $"HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n{fileContent}";
-        }
-
     }
 }
