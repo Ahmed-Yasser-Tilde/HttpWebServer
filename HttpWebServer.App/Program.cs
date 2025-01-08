@@ -1,10 +1,25 @@
-﻿namespace HttpWebServer.App
+﻿using HttpWebServer.CL.Models.Configuration;
+using HttpWebServer.CL.Models.Server;
+using System.Net.Sockets;
+
+namespace HttpWebServer.App
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
-            Console.ReadKey();
+            ConfigurationHelper configurationHelper = ConfigurationHelper.Instance;
+            Configuration configuration = configurationHelper.LoadConfigurationFile();
+
+            HttpServer httpServer = HttpServer.Instance;
+            httpServer.Initialize(configuration.IpAddress , configuration.Port);
+            httpServer.Start();
+            while (true)
+            {
+                TcpClient client = await httpServer.AcceptTcpClientAsync();
+                await httpServer.HandleClientAsync(client);
+            }
+                httpServer.Stop();
         }
     }
 }

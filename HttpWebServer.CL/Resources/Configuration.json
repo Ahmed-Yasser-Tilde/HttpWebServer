@@ -1,4 +1,4 @@
 {
-  "ipAddress": "localhost",
-  "port": "8000"
+  "IpAddress": "192.168.141.102",
+  "Port": "8000"
 }
