@@ -19,7 +19,7 @@ namespace HttpWebServer.App
                 TcpClient client = await httpServer.AcceptTcpClientAsync();
                 await httpServer.HandleClientAsync(client);
             }
-                httpServer.Stop();
+            //httpServer.Stop();
         }
     }
 }
