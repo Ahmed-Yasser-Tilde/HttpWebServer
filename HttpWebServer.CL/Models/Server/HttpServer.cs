@@ -122,7 +122,9 @@ namespace HttpWebServer.CL.Models.Server
                 string httpRequest = Encoding.UTF8.GetString(buffer, 0, bytesRead);
                 Console.WriteLine("Request:\n" + httpRequest);
 
-                await HandleMiddlewares(httpRequest);
+                bool handeled = await HandleMiddlewares(httpRequest , client);
+                if (!handeled)
+                    return;
 
                 string requestRoute = _requestHelper.GetRequestedRoute(httpRequest);
                 if (_routes.ContainsKey(requestRoute))
@@ -197,12 +199,56 @@ namespace HttpWebServer.CL.Models.Server
                 Console.WriteLine($"Error sending error response: {ex.Message}");
             }
         }
-        
-        private async Task HandleMiddlewares(string request )
+
+        private async Task SendUnAuthResponseAsync(TcpClient client)
+        {
+            try
+            {
+                if (client.Connected)
+                {
+                    using (NetworkStream stream = client.GetStream())
+                    {
+                        string errorPage = await _requestHelper.HandleGlobalPages(_projectOutputDirectory, CommonString.UnAuth);
+                        byte[] responseData = _responseHelper.ProcessResponseAsync("text/html", errorPage, HttpStatusCode.Unauthorized);
+                        await stream.WriteAsync(responseData);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending error response: {ex.Message}");
+            }
+        }
+
+
+        private async Task<bool> HandleMiddlewares(string request , TcpClient client)
         {
             foreach (var middleware in _middlewares)
             {
-                bool handeled = await middleware.Handle(request , _requestHelper , _responseHelper);
+                HttpStatusCode statusCode = await middleware.Handle(request, _requestHelper, _responseHelper);
+                if (statusCode == HttpStatusCode.Accepted)
+                    continue;
+                await HandleStatusCodeAsync(client, statusCode);
+                return false;
+            }
+            return true;
+        }
+
+        private async Task HandleStatusCodeAsync(TcpClient client, HttpStatusCode statusCode)
+        {
+            switch (statusCode)
+            {
+                case HttpStatusCode.Unauthorized:
+                    await SendUnAuthResponseAsync(client);
+                    break;
+                case HttpStatusCode.InternalServerError:
+                    await SendErrorResponseAsync(client);
+                    break;
+                case HttpStatusCode.NotFound:
+                    await SendNotFoundResponseAsync(client);
+                    break;
+                default:
+                    break;
             }
         }
         #endregion

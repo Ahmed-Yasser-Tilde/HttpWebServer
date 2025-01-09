@@ -29,7 +29,7 @@ namespace HttpWebServer.CL.Models.Response
             {
                 HttpStatusCode.OK => "200 OK",
                 HttpStatusCode.NotFound => "404 Not Found",
-                HttpStatusCode.BadRequest => "400 Bad Request",
+                HttpStatusCode.Unauthorized => "401 Unauthorized",
                 HttpStatusCode.InternalServerError => "500 Internal Server Error",
                 _ => ""
             };
