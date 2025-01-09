@@ -7,34 +7,18 @@ namespace HttpWebServer.CL.Models.Request
     public class RequestHelper
     {
 
-        public async Task<(string , HttpStatusCode)> ProcessRequestAsync(string httpRequest, string requestedResource , string projectOutputDirectory)
+        public async Task<(string , HttpStatusCode)> ProcessRequestAsync(string requestRoute, string projectOutputDirectory)
         {
-            string[] requestLines = httpRequest.Split('\n');
-            string[] requestLineParts = requestLines[0].Split(' ');
-            string method = requestLineParts[0];
-            string path = requestLineParts[1];
-            string filePath = Path.Combine(projectOutputDirectory, requestedResource);
-            if (path.StartsWith("/static/"))
+            string filePath = Path.Combine(projectOutputDirectory, requestRoute);
+            if (!File.Exists(filePath))
             {
-                if (!File.Exists(filePath))
-                {
-                    return (await HandleGlobalPages(filePath , projectOutputDirectory , CommonString.NotFoundPage) , HttpStatusCode.NotFound);
-                }
-                else
-                {
-                    string fileContent = await File.ReadAllTextAsync(filePath);
-                    return (fileContent , HttpStatusCode.OK);
-                }
+                return (await HandleGlobalPages(projectOutputDirectory, CommonString.NotFoundPage) , HttpStatusCode.NotFound);
             }
-            else if (path.StartsWith("/BadRequest"))
+            else
             {
-                return (await HandleGlobalPages(filePath, projectOutputDirectory, CommonString.BadRequest) , HttpStatusCode.BadRequest);
+                string fileContent = await File.ReadAllTextAsync(filePath);
+                return (fileContent , HttpStatusCode.OK);
             }
-            else if(path.StartsWith("/InternalServerError"))
-            {
-                return (await HandleGlobalPages(filePath, projectOutputDirectory, CommonString.InternalServerError) , HttpStatusCode.InternalServerError);
-            }
-            return (string.Empty , HttpStatusCode.NoContent);
         }
 
         public string GetRequestedResource(string request)
@@ -58,6 +42,22 @@ namespace HttpWebServer.CL.Models.Request
             return stringBuilder.ToString();
         }
 
+        public string GetRequestedRoute(string request)
+        {
+            string[] requestLines = request.Split('\n');
+            string[] requestLineParts = requestLines[0].Split(' ');
+            string method = requestLineParts[0];
+            string path = requestLineParts[1];
+            StringBuilder stringBuilder = new StringBuilder();
+            for (int i = 1; i < path.Length; i++)
+            {
+                if (path[i] == '/')
+                    break;
+                stringBuilder.Append(path[i]);
+            }
+            return stringBuilder.ToString();
+        }
+
         public string GetContentType(string resource)
         {
             string extension = Path.GetExtension(resource).ToLower();
@@ -74,12 +74,11 @@ namespace HttpWebServer.CL.Models.Request
             };
         }
 
-        private async Task<string> HandleGlobalPages(string filePath , string projectOutputDirectory , string pageName)
+        public async Task<string> HandleGlobalPages(string projectOutputDirectory , string pageName)
         {
-            filePath = Path.Combine(projectOutputDirectory, pageName);
+            string filePath = Path.Combine(projectOutputDirectory, $"Static/{pageName}");
             string fileContent = await File.ReadAllTextAsync(filePath);
             return fileContent;
         }
-
     }
 }

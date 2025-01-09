@@ -13,6 +13,7 @@ namespace HttpWebServer.App
 
             HttpServer httpServer = HttpServer.Instance;
             httpServer.Initialize(configuration.IpAddress , configuration.Port);
+            httpServer.AddRoute("/static");
             httpServer.Start();
             while (true)
             {

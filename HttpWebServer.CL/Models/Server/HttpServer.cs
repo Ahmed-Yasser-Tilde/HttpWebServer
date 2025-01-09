@@ -13,6 +13,7 @@ namespace HttpWebServer.CL.Models.Server
         #region Properites
         private static readonly Lazy<HttpServer> _instance = new Lazy<HttpServer>(() => new HttpServer());
         public static HttpServer Instance => _instance.Value;
+        private Dictionary<string, bool> _routes;
         private RequestHelper _requestHelper;
         private ResponseHelper _responseHelper;
         private TcpListener _tcpListener;
@@ -29,9 +30,10 @@ namespace HttpWebServer.CL.Models.Server
             IPEndPoint endPoint = CreateIPEndPoint(ipAddress, port);
             _tcpListener = new TcpListener(endPoint);
             string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            _projectOutputDirectory = Path.GetFullPath(Path.Combine(assemblyDirectory, @"..\..\..\..\HttpWebServer.CL\static"));
+            _projectOutputDirectory = Path.GetFullPath(Path.Combine(assemblyDirectory, @"..\..\..\..\HttpWebServer.CL"));
             _requestHelper = new RequestHelper();
             _responseHelper = new ResponseHelper();
+            _routes = new Dictionary<string, bool>();
         }
 
         private IPEndPoint CreateIPEndPoint(string ipAddress, string port)
@@ -108,39 +110,94 @@ namespace HttpWebServer.CL.Models.Server
 
         public async Task HandleClientAsync(TcpClient client)
         {
+            NetworkStream stream = null;
             try
             {
-                using (client)
-                using (NetworkStream stream = client.GetStream())
-                {
-                    byte[] buffer = new byte[1024];
-                    int bytesRead = await stream.ReadAsync(buffer);
-                    string httpRequest = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    Console.WriteLine("Request:\n" + httpRequest);
+                stream = client.GetStream();
+                byte[] buffer = new byte[1024];
+                int bytesRead = await stream.ReadAsync(buffer);
+                string httpRequest = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                Console.WriteLine("Request:\n" + httpRequest);
 
+                string requestRoute = _requestHelper.GetRequestedRoute(httpRequest);
+                if (_routes.ContainsKey(requestRoute))
+                {
+                    await SendNotFoundResponseAsync(client);
+                }
+                else
+                {
                     string requestedResource = _requestHelper.GetRequestedResource(httpRequest);
                     string contentType = _requestHelper.GetContentType(requestedResource);
 
-                    (string , HttpStatusCode) response = await _requestHelper.ProcessRequestAsync(httpRequest, requestedResource , _projectOutputDirectory);
+                    (string, HttpStatusCode) response = await _requestHelper.ProcessRequestAsync($"{requestRoute}/{requestedResource}", _projectOutputDirectory);
                     string responseBody = response.Item1;
                     HttpStatusCode responseStatus = response.Item2;
 
-                    byte[] responseData = _responseHelper.ProcessResponseAsync(contentType, responseBody , responseStatus);
+                    byte[] responseData = _responseHelper.ProcessResponseAsync(contentType, responseBody, responseStatus);
                     await stream.WriteAsync(responseData);
                 }
             }
             catch (IOException ex)
             {
+                await SendErrorResponseAsync(client);
                 Console.WriteLine($"Network error occurred while handling client: {ex.Message}");
             }
             catch (Exception ex)
             {
+                await SendErrorResponseAsync(client);
                 Console.WriteLine($"An unexpected error occurred while handling client: {ex.Message}");
             }
             finally
             {
                 client.Close();
             }
+        }
+
+        private async Task SendErrorResponseAsync(TcpClient client)
+        {
+            try
+            {
+                if (client.Connected)
+                {
+                    using (NetworkStream stream = client.GetStream())
+                    {
+                        string errorPage = await _requestHelper.HandleGlobalPages(_projectOutputDirectory, CommonString.InternalServerError);
+                        byte[] responseData = _responseHelper.ProcessResponseAsync(".html", errorPage, HttpStatusCode.InternalServerError);
+                        await stream.WriteAsync(responseData);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending error response: {ex.Message}");
+            }
+        }
+
+        private async Task SendNotFoundResponseAsync(TcpClient client)
+        {
+            try
+            {
+                if (client.Connected)
+                {
+                    using (NetworkStream stream = client.GetStream())
+                    {
+                        string errorPage = await _requestHelper.HandleGlobalPages(_projectOutputDirectory, CommonString.NotFoundPage);
+                        byte[] responseData = _responseHelper.ProcessResponseAsync(".html", errorPage, HttpStatusCode.NotFound);
+                        await stream.WriteAsync(responseData);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error sending error response: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region Methods
+        public void AddRoute(string routeName)
+        {
+            _routes.Add(routeName, true);
         }
         #endregion
     }
