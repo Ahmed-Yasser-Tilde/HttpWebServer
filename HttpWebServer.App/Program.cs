@@ -1,4 +1,5 @@
 ﻿using HttpWebServer.CL.Models.Configuration;
+using HttpWebServer.CL.Models.Middleware;
 using HttpWebServer.CL.Models.Server;
 using System.Net.Sockets;
 
@@ -14,6 +15,7 @@ namespace HttpWebServer.App
             HttpServer httpServer = HttpServer.Instance;
             httpServer.Initialize(configuration.IpAddress , configuration.Port);
             httpServer.AddRoute("/static");
+            httpServer.Use(new BasicAuthMiddleware());
             httpServer.Start();
             while (true)
             {

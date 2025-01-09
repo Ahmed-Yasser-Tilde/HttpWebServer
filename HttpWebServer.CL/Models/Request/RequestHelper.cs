@@ -74,6 +74,20 @@ namespace HttpWebServer.CL.Models.Request
             };
         }
 
+        public string[] GetAuthorizationLine(string request)
+        {
+            string[] requestLines = request.Split('\n');
+            foreach(string line in requestLines)
+            {
+                string[] requestLineParts = line.Split(' ');
+                if(requestLineParts[0] == "Authorization:")
+                {
+                    return requestLineParts;
+                }
+            }
+            return null;
+        }
+
         public async Task<string> HandleGlobalPages(string projectOutputDirectory , string pageName)
         {
             string filePath = Path.Combine(projectOutputDirectory, $"Static/{pageName}");

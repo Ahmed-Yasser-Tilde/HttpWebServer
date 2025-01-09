@@ -1,4 +1,5 @@
 ﻿using HttpWebServer.CL.Common;
+using HttpWebServer.CL.Models.Middleware;
 using HttpWebServer.CL.Models.Request;
 using HttpWebServer.CL.Models.Response;
 using System.Net;
@@ -14,6 +15,7 @@ namespace HttpWebServer.CL.Models.Server
         private static readonly Lazy<HttpServer> _instance = new Lazy<HttpServer>(() => new HttpServer());
         public static HttpServer Instance => _instance.Value;
         private Dictionary<string, bool> _routes;
+        private List<IMiddleware> _middlewares;
         private RequestHelper _requestHelper;
         private ResponseHelper _responseHelper;
         private TcpListener _tcpListener;
@@ -34,6 +36,7 @@ namespace HttpWebServer.CL.Models.Server
             _requestHelper = new RequestHelper();
             _responseHelper = new ResponseHelper();
             _routes = new Dictionary<string, bool>();
+            _middlewares = new List<IMiddleware>();
         }
 
         private IPEndPoint CreateIPEndPoint(string ipAddress, string port)
@@ -119,6 +122,8 @@ namespace HttpWebServer.CL.Models.Server
                 string httpRequest = Encoding.UTF8.GetString(buffer, 0, bytesRead);
                 Console.WriteLine("Request:\n" + httpRequest);
 
+                await HandleMiddlewares(httpRequest);
+
                 string requestRoute = _requestHelper.GetRequestedRoute(httpRequest);
                 if (_routes.ContainsKey(requestRoute))
                 {
@@ -192,12 +197,24 @@ namespace HttpWebServer.CL.Models.Server
                 Console.WriteLine($"Error sending error response: {ex.Message}");
             }
         }
+        
+        private async Task HandleMiddlewares(string request )
+        {
+            foreach (var middleware in _middlewares)
+            {
+                bool handeled = await middleware.Handle(request , _requestHelper , _responseHelper);
+            }
+        }
         #endregion
 
         #region Methods
         public void AddRoute(string routeName)
         {
             _routes.Add(routeName, true);
+        }
+        public void Use(IMiddleware middleware)
+        {
+            _middlewares.Add(middleware);
         }
         #endregion
     }
